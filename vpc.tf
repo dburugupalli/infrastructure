@@ -79,7 +79,7 @@ resource "aws_s3_bucket" "my_s3_bucket_resource" {
 }
 
 resource "aws_iam_role" "role" {
-  name = "test-role"
+  name = "EC2-CSYE6225"
 
   assume_role_policy = <<-EOF
     {
@@ -99,7 +99,7 @@ EOF
 }
 
 resource "aws_iam_policy" "policy" {
-  name        = "test-policy"
+  name        = "WebAppS3"
   description = "A test policy"
 
   policy = <<EOF
