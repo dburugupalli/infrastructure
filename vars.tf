@@ -39,3 +39,22 @@ variable "destinationCIDR" {
   type = string
 }
 
+variable "rdsDBName" {
+  type = string
+}
+
+variable "id" {
+  type = string
+}
+
+variable "dbusername" {
+  type = string
+}
+
+variable "dbpassword" {
+  type = string
+}
+
+variable "ec2_key" {
+  type = string
+}
