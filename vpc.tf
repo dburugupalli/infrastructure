@@ -235,12 +235,10 @@ resource "aws_instance" "example" {
   }
 }
 
-
 resource "aws_dynamodb_table" "dynamodb-table" {
-
   name           = "csye6225"
-  read_capacity  = 20
-  write_capacity = 20
+  read_capacity  = 5
+  write_capacity = 5
   hash_key       = "id"
 
   attribute {
