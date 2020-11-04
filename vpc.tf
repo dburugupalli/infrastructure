@@ -56,7 +56,7 @@ resource "aws_route_table_association" "VPC_association" {
 }
 
 resource "aws_s3_bucket" "my_s3_bucket_resource" {
-  bucket        = "webapp.dinakarasaisantosh.burugupalli"
+  bucket        = "${var.bucket_name}"
   force_destroy = true
   acl           = "private"
   versioning {
@@ -108,7 +108,7 @@ resource "aws_iam_policy" "policy" {
     "Statement": [
         {
             "Action": [
-               "s3:Get*",
+         "s3:Get*",
         "s3:List*",
         "s3:PutObject",
         "s3:DeleteObject",
@@ -116,8 +116,10 @@ resource "aws_iam_policy" "policy" {
             ],
             "Effect": "Allow",
             "Resource": [
-                "arn:aws:s3:::webapp.dinakarasaisantosh.burugupalli",
-                "arn:aws:s3:::webapp.dinakarasaisantosh.burugupalli/*"
+                "arn:aws:s3:::${var.bucket_name}",
+                "arn:aws:s3:::${var.bucket_name}/*",
+                "arn:aws:s3:::codedeploy.${var.aws_profile}.${var.dns_record}",
+                "arn:aws:s3:::codedeploy.${var.aws_profile}.${var.dns_record}/*"
             ]
         }
     ]
@@ -233,6 +235,11 @@ resource "aws_instance" "example" {
     volume_size           = 20
     delete_on_termination = true
   }
+
+  tags = {
+    Name = "cicd"
+  }
+
 }
 
 resource "aws_dynamodb_table" "dynamodb-table" {
@@ -248,4 +255,204 @@ resource "aws_dynamodb_table" "dynamodb-table" {
   tags = {
     Name = "csye6225"
   }
+}
+
+resource "aws_iam_role" "code_deploy_role" {
+  name               = "CodeDeployServiceRole"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codedeploy.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_policy" "gh-ec2-ami" {
+  name = "gh-ec2-ami"
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "ec2:AttachVolume",
+      "ec2:AuthorizeSecurityGroupIngress",
+      "ec2:CopyImage",
+      "ec2:CreateImage",
+      "ec2:CreateKeypair",
+      "ec2:CreateSecurityGroup",
+      "ec2:CreateSnapshot",
+      "ec2:CreateTags",
+      "ec2:CreateVolume",
+      "ec2:DeleteKeyPair",
+      "ec2:DeleteSecurityGroup",
+      "ec2:DeleteSnapshot",
+      "ec2:DeleteVolume",
+      "ec2:DeregisterImage",
+      "ec2:DescribeImageAttribute",
+      "ec2:DescribeImages",
+      "ec2:DescribeInstances",
+      "ec2:DescribeInstanceStatus",
+      "ec2:DescribeRegions",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSnapshots",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeTags",
+      "ec2:DescribeVolumes",
+      "ec2:DetachVolume",
+      "ec2:GetPasswordData",
+      "ec2:ModifyImageAttribute",
+      "ec2:ModifyInstanceAttribute",
+      "ec2:ModifySnapshotAttribute",
+      "ec2:RegisterImage",
+      "ec2:RunInstances",
+      "ec2:StopInstances",
+      "ec2:TerminateInstances"
+    ],
+    "Resource" : "*"
+  }]
+}
+EOF
+}
+
+
+resource "aws_iam_policy" "GH-Upload-To-S3" {
+  name   = "GH_s3_policy"
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+           "s3:Get*",
+        "s3:List*",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:s3:::codedeploy.${var.aws_profile}.${var.dns_record}",
+                "arn:aws:s3:::codedeploy.${var.aws_profile}.${var.dns_record}/*"
+            ]
+        }
+    ]
+}
+EOF
+}
+
+resource "aws_iam_policy" "GH-Code-Deploy" {
+  name   = "GH_codedeploy_policy"
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "codedeploy:RegisterApplicationRevision",
+                "codedeploy:GetApplicationRevision"
+            ],
+            "Resource": [
+                "arn:aws:codedeploy:${var.aws_region}:${var.aws_account_id}:application:${aws_codedeploy_app.code_deploy_app.name}"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "codedeploy:CreateDeployment",
+                "codedeploy:GetDeployment"
+            ],
+            "Resource": [
+"arn:aws:codedeploy:${var.aws_region}:${var.aws_account_id}:deploymentgroup:${aws_codedeploy_app.code_deploy_app.name}/${aws_codedeploy_deployment_group.code_deploy_deployment_group.deployment_group_name}"            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "codedeploy:GetDeploymentConfig"
+            ],
+            "Resource": [
+                "arn:aws:codedeploy:${var.aws_region}:${var.aws_account_id}:deploymentconfig:CodeDeployDefault.OneAtATime",
+                "arn:aws:codedeploy:${var.aws_region}:${var.aws_account_id}:deploymentconfig:CodeDeployDefault.HalfAtATime",
+                "arn:aws:codedeploy:${var.aws_region}:${var.aws_account_id}:deploymentconfig:CodeDeployDefault.AllAtOnce"
+            ]
+        }
+    ]
+}
+EOF
+}
+
+resource "aws_iam_user_policy_attachment" "GH_ec2_policy_attach" {
+  user       = "ghactions"
+  policy_arn = "${aws_iam_policy.gh-ec2-ami.arn}"
+}
+
+resource "aws_iam_user_policy_attachment" "GH_s3_policy_attach" {
+  user       = "ghactions"
+  policy_arn = "${aws_iam_policy.GH-Upload-To-S3.arn}"
+}
+
+resource "aws_iam_user_policy_attachment" "GH_codedeploy_policy_attach" {
+  user       = "ghactions"
+  policy_arn = "${aws_iam_policy.GH-Code-Deploy.arn}"
+}
+
+
+resource "aws_iam_role_policy_attachment" "AWSCodeDeployRole" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"
+  role       = "${aws_iam_role.code_deploy_role.name}"
+}
+
+resource "aws_codedeploy_app" "code_deploy_app" {
+  compute_platform = "Server"
+  name             = "csye6225-webapp"
+}
+
+resource "aws_codedeploy_deployment_group" "code_deploy_deployment_group" {
+  app_name               = "${aws_codedeploy_app.code_deploy_app.name}"
+  deployment_group_name  = "csye6225-webapp-deployment"
+  deployment_config_name = "CodeDeployDefault.AllAtOnce"
+  service_role_arn       = "${aws_iam_role.code_deploy_role.arn}"
+
+  ec2_tag_filter {
+    key   = "Name"
+    type  = "KEY_AND_VALUE"
+    value = "cicd"
+  }
+
+  deployment_style {
+    deployment_option = "WITHOUT_TRAFFIC_CONTROL"
+    deployment_type   = "IN_PLACE"
+  }
+
+  auto_rollback_configuration {
+    enabled = true
+    events  = ["DEPLOYMENT_FAILURE"]
+  }
+
+  depends_on = [aws_codedeploy_app.code_deploy_app]
+}
+
+
+data "aws_route53_zone" "selected" {
+  name         = "${var.aws_profile}.${var.dns_record}"
+  private_zone = false
+}
+
+resource "aws_route53_record" "dms-ec2" {
+  zone_id = data.aws_route53_zone.selected.zone_id
+  name    = "api.${data.aws_route53_zone.selected.name}"
+  type    = "A"
+  ttl     = "300"
+  records = ["${aws_instance.example.public_ip}"]
 }

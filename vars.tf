@@ -58,3 +58,15 @@ variable "dbpassword" {
 variable "ec2_key" {
   type = string
 }
+
+variable "dns_record" {
+  type = string
+}
+
+variable "aws_account_id" {
+  type = string
+}
+
+variable "bucket_name" {
+  type = string
+}
