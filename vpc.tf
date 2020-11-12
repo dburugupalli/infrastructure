@@ -137,6 +137,17 @@ resource "aws_iam_instance_profile" "test_profile" {
   role = aws_iam_role.role.name
 }
 
+resource "aws_iam_role_policy_attachment" "CloudWatchAgentPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+  role       = "${aws_iam_role.role.name}"
+}
+
+
+resource "aws_iam_role_policy_attachment" "AmazonSSMManagedInstanceCore" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  role       = "${aws_iam_role.role.name}"
+}
+
 resource "aws_security_group" "My_VPC_Security_Group" {
   vpc_id      = aws_vpc.VPC.id
   name        = "My VPC Security Group"
