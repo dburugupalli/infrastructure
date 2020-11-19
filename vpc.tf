@@ -506,7 +506,7 @@ resource "aws_autoscaling_group" "autoscaling" {
 }
 
 resource "aws_lb_target_group" "albTargetGroup" {
-  name     = "applicationLoadBalancerTargetGroup"
+  name     = "aLoadBalancerTargetGroup"
   port     = "8080"
   protocol = "HTTP"
   vpc_id   = "${aws_vpc.VPC.id}"
