@@ -154,31 +154,38 @@ resource "aws_security_group" "My_VPC_Security_Group" {
   description = "My VPC Security Group"
   # allow ingress of port 22
   ingress {
-    cidr_blocks = var.ingressCIDR
+    # cidr_blocks = var.ingressCIDR
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
+    security_groups=["${aws_security_group.loadBalancer.id}"]
   }
 
   ingress {
-    cidr_blocks = var.ingressCIDR
+    # cidr_blocks = var.ingressCIDR
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
+    security_groups=["${aws_security_group.loadBalancer.id}"]
+
   }
 
   ingress {
-    cidr_blocks = var.ingressCIDR
+    # cidr_blocks = var.ingressCIDR
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
+    security_groups=["${aws_security_group.loadBalancer.id}"]
+
   }
 
   ingress {
-    cidr_blocks = var.ingressCIDR
+    # cidr_blocks = var.ingressCIDR
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
+        security_groups=["${aws_security_group.loadBalancer.id}"]
+
   }
 
   # allow egress of all ports
@@ -224,11 +231,42 @@ resource "aws_db_instance" "db" {
   vpc_security_group_ids = ["${aws_security_group.database.id}"]
 }
 
-resource "aws_instance" "example" {
-  ami                    = data.aws_ami.ami.id
+
+
+resource "aws_security_group" "loadBalancer" {
+  name   = "lbsecuritygroup"
+  vpc_id = "${aws_vpc.VPC.id}"
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+    ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = {
+    Name        = "lbsecuritygroup"
+  }
+}
+
+
+
+resource "aws_launch_configuration" "asg_launch_config" {
+  name                   = "asg_launch_config"
+   image_id                     = data.aws_ami.ami.id
   instance_type          = "t2.micro"
-  vpc_security_group_ids = ["${aws_security_group.My_VPC_Security_Group.id}"]
-  subnet_id              = "${aws_subnet.VPC_Subnet[0].id}"
+  security_groups        = ["${aws_security_group.My_VPC_Security_Group.id}"]
+  # subnet_id              = "${aws_subnet.test_VPC_Subnet[0].id}"
   key_name               = "${var.ec2_key}"
   iam_instance_profile   = "${aws_iam_instance_profile.test_profile.name}"
   user_data              = <<-EOF
@@ -241,17 +279,14 @@ resource "aws_instance" "example" {
                sudo echo export "DBpassword=${aws_db_instance.db.password}" >> /etc/environment
                sudo echo export "Region=${var.aws_region}" >> /etc/environment 
                EOF
+
   root_block_device {
     volume_type           = "gp2"
     volume_size           = 20
     delete_on_termination = true
   }
-
-  tags = {
-    Name = "cicd"
-  }
-
 }
+
 
 resource "aws_dynamodb_table" "dynamodb-table" {
   name           = "csye6225"
@@ -434,7 +469,7 @@ resource "aws_codedeploy_deployment_group" "code_deploy_deployment_group" {
   deployment_group_name  = "csye6225-webapp-deployment"
   deployment_config_name = "CodeDeployDefault.AllAtOnce"
   service_role_arn       = "${aws_iam_role.code_deploy_role.arn}"
-
+  autoscaling_groups = ["${aws_autoscaling_group.autoscaling.name}"]
   ec2_tag_filter {
     key   = "Name"
     type  = "KEY_AND_VALUE"
@@ -450,10 +485,115 @@ resource "aws_codedeploy_deployment_group" "code_deploy_deployment_group" {
     enabled = true
     events  = ["DEPLOYMENT_FAILURE"]
   }
-
   depends_on = [aws_codedeploy_app.code_deploy_app]
 }
 
+
+resource "aws_autoscaling_group" "autoscaling" {
+  name                 = "terraform-aws-autoscaling-group"
+  launch_configuration = "${aws_launch_configuration.asg_launch_config.name}"
+  min_size             = 3
+  max_size             = 5
+  default_cooldown     = 60
+  desired_capacity     = 3
+  vpc_zone_identifier = ["${aws_subnet.VPC_Subnet[0].id}"]
+  target_group_arns = ["${aws_lb_target_group.albTargetGroup.arn}"]
+  tag {
+    key                 = "Name"
+    value               = "cicd"
+    propagate_at_launch = true
+  }
+}
+
+resource "aws_lb_target_group" "albTargetGroup" {
+  name     = "applicationLoadBalancerTargetGroup"
+  port     = "8080"
+  protocol = "HTTP"
+  vpc_id   = "${aws_vpc.VPC.id}"
+  tags = {
+    name = "albTargetGroup"
+  }
+  health_check {
+    healthy_threshold   = 3
+    unhealthy_threshold = 5
+    timeout             = 5
+    interval            = 30
+    path                = "/healthstatus"
+    port                = "8080"
+    matcher             = "200"
+  }
+}
+
+resource "aws_autoscaling_policy" "WebServerScaleUpPolicy" {
+  name                   = "WebServerScaleUpPolicy"
+  adjustment_type        = "ChangeInCapacity"
+  autoscaling_group_name = "${aws_autoscaling_group.autoscaling.name}"
+  cooldown               = 60
+  scaling_adjustment     = 1
+}
+
+resource "aws_autoscaling_policy" "WebServerScaleDownPolicy" {
+  name                   = "WebServerScaleDownPolicy"
+  adjustment_type        = "ChangeInCapacity"
+  autoscaling_group_name = "${aws_autoscaling_group.autoscaling.name}"
+  cooldown               = 60
+  scaling_adjustment     = -1
+}
+
+resource "aws_cloudwatch_metric_alarm" "CPUAlarmLow" {
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  statistic           = "Average"
+  period              = "60"
+  evaluation_periods  = "1"
+  threshold           = "3"
+  alarm_name          = "CPUAlarmLow"
+  comparison_operator = "LessThanThreshold"
+  dimensions = {
+    AutoScalingGroupName = "${aws_autoscaling_group.autoscaling.name}"
+  }
+  alarm_description = "if (CPU < 3%) for 1 minute then Scale-down"
+  alarm_actions     = ["${aws_autoscaling_policy.WebServerScaleDownPolicy.arn}"]
+}
+
+resource "aws_cloudwatch_metric_alarm" "CPUAlarmHigh" {
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  statistic           = "Average"
+  period              = "60"
+  evaluation_periods  = "1"
+  threshold           = "5"
+  alarm_name          = "CPUAlarmHigh"
+  comparison_operator = "GreaterThanThreshold"
+  dimensions = {
+  AutoScalingGroupName = "${aws_autoscaling_group.autoscaling.name}"
+  }
+  alarm_description = "if (CPU > 5%) for 1 minute then Scale-up"
+  alarm_actions     = ["${aws_autoscaling_policy.WebServerScaleUpPolicy.arn}"]
+}
+
+resource "aws_lb" "applicationLoadBalancer" {
+  name               = "applicationLoadBalancer"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = ["${aws_security_group.loadBalancer.id}"]
+  # count              = "${length(var.subnetCIDR)}"
+  subnets            = "${aws_subnet.VPC_Subnet.*.id}"
+  ip_address_type    = "ipv4"
+  tags = {
+    Name        = "applicationLoadBalancer"
+  }
+}
+
+resource "aws_lb_listener" "webappListener" {
+  load_balancer_arn = "${aws_lb.applicationLoadBalancer.arn}"
+  port              = "80"
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = "${aws_lb_target_group.albTargetGroup.arn}"
+  }
+}
 
 data "aws_route53_zone" "selected" {
   name         = "${var.aws_profile}.${var.dns_record}"
@@ -462,8 +602,13 @@ data "aws_route53_zone" "selected" {
 
 resource "aws_route53_record" "dms-ec2" {
   zone_id = data.aws_route53_zone.selected.zone_id
-  name    = "api.${data.aws_route53_zone.selected.name}"
+  name    = "${data.aws_route53_zone.selected.name}"
   type    = "A"
-  ttl     = "60"
-  records = ["${aws_instance.example.public_ip}"]
+  # ttl     = "60"
+  # records = ["${aws_instance.example.public_ip}"]
+  alias {
+    name    = "${aws_lb.applicationLoadBalancer.dns_name}"
+    zone_id = "${aws_lb.applicationLoadBalancer.zone_id}"
+    evaluate_target_health = true
+  }
 }
