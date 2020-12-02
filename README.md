@@ -5,7 +5,7 @@
 #### Pre-requisite
 
 ```
-1. Configure aws-cli
+1. Configure aws-cli as per the required profile
 ```
 
 ```
@@ -30,3 +30,24 @@ Create networking resources using terraform apply command
 Cleanup of networking resources using terraform destroy command.
 ```
 
+### To execute the file 
+
+```
+Clone the git repository 
+
+create vars.tfvars or variables File
+
+install terraform 
+
+terraform init
+
+terrraform apply -var-file=vars.tfvars
+
+All the required resources will be provisioned 
+
+To destory the infrastructure 
+
+terraform destroy -var-file=vars.tfvars 
+
+All the required resources will be de-provisioned
+```

@@ -70,3 +70,7 @@ variable "aws_account_id" {
 variable "bucket_name" {
   type = string
 }
+
+variable "website_url" {
+  type = string
+}
