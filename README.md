@@ -51,3 +51,10 @@ terraform destroy -var-file=vars.tfvars
 
 All the required resources will be de-provisioned
 ```
+
+### Load Balancing Infrastructure using Terraform
+
+```
+Application load balancer
+Auto Scaling Group
+AutoScaling Policies - Scale Up and Scale Down policies
