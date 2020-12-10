@@ -154,11 +154,11 @@ resource "aws_security_group" "My_VPC_Security_Group" {
   description = "My VPC Security Group"
   # allow ingress of port 22
   ingress {
-    # cidr_blocks = var.ingressCIDR
+    cidr_blocks = var.ingressCIDR
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    security_groups=["${aws_security_group.loadBalancer.id}"]
+  //  security_groups=["${aws_security_group.loadBalancer.id}"]
   }
 
   ingress {
@@ -176,7 +176,6 @@ resource "aws_security_group" "My_VPC_Security_Group" {
     to_port     = 443
     protocol    = "tcp"
     security_groups=["${aws_security_group.loadBalancer.id}"]
-
   }
 
   ingress {
@@ -184,7 +183,7 @@ resource "aws_security_group" "My_VPC_Security_Group" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-        security_groups=["${aws_security_group.loadBalancer.id}"]
+    security_groups=["${aws_security_group.loadBalancer.id}"]
 
   }
 
@@ -197,6 +196,10 @@ resource "aws_security_group" "My_VPC_Security_Group" {
   }
 } # end resource
 
+data "aws_acm_certificate" "ssl_certificate" {
+  domain   = "${var.aws_profile}.${var.dns_record}"
+  statuses = ["ISSUED"]
+}
 
 # Database security group
 resource "aws_security_group" "database" {
@@ -216,19 +219,31 @@ resource "aws_security_group_rule" "database" {
   source_security_group_id = "${aws_security_group.My_VPC_Security_Group.id}"
   security_group_id        = "${aws_security_group.database.id}"
 }
+resource "aws_db_parameter_group" "default" {
+  name   = "rds-mysql"
+  family = "mysql5.7"
+
+  parameter {
+    name  = "performance_schema"
+    value = true
+    apply_method = "pending-reboot"
+  }
+}
 
 resource "aws_db_instance" "db" {
   allocated_storage      = "20"
   storage_type           = "gp2"
   engine                 = "mysql"
   engine_version         = "5.7.22"
-  instance_class         = "db.t2.micro"
+  instance_class         = "db.t2.small"
   name                   = "${var.rdsDBName}"
   username               = "${var.dbusername}"
   password               = "${var.dbpassword}"
   skip_final_snapshot    = true
   db_subnet_group_name   = "${aws_db_subnet_group.db-subnet.name}"
   vpc_security_group_ids = ["${aws_security_group.database.id}"]
+  parameter_group_name = "${aws_db_parameter_group.default.name}"
+  storage_encrypted = true
 }
 
 
@@ -728,8 +743,10 @@ resource "aws_lb" "applicationLoadBalancer" {
 
 resource "aws_lb_listener" "webappListener" {
   load_balancer_arn = "${aws_lb.applicationLoadBalancer.arn}"
-  port              = "80"
-  protocol          = "HTTP"
+  port              = "443"
+  protocol          = "HTTPS"
+  certificate_arn   = "${data.aws_acm_certificate.ssl_certificate.arn}"
+
   default_action {
     type             = "forward"
     target_group_arn = "${aws_lb_target_group.albTargetGroup.arn}"
